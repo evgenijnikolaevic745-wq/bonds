@@ -1,0 +1,30 @@
+name: Daily Bond Scraper
+
+on:
+  schedule:
+    # Запуск о 09:00 UTC (це 11:00 або 12:00 за Києвом, залежно від сезону)
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Додає кнопку для ручного запуску (щоб протестувати зараз)
+
+jobs:
+  scrape_and_update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Script
+        env:
+          # Передаємо секретний ключ як змінну середовища
+          FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
+        run: python main.py
