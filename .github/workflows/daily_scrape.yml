@@ -1,10 +1,10 @@
-name: Daily Bond Scraper
+name: Daily Bond Scraper & Reminders
 
 on:
   schedule:
-    # Запуск о 09:00 UTC (це 11:00 або 12:00 за Києвом, залежно від сезону)
+    # Запуск о 09:00 UTC (11:00 або 12:00 за Києвом)
     - cron: '0 9 * * *'
-  workflow_dispatch: # Додає кнопку для ручного запуску (щоб протестувати зараз)
+  workflow_dispatch: # Додає кнопку для ручного запуску
 
 jobs:
   scrape_and_update:
@@ -23,8 +23,24 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run Script
+      # --- КРОК 1: ПАРСИНГ ДАНИХ ---
+      - name: Run Scraper
         env:
-          # Передаємо секретний ключ як змінну середовища
+          # Ваш існуючий ключ для main.py
           FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
         run: python main.py
+
+      # --- КРОК 2: НАГАДУВАННЯ В TELEGRAM ---
+      - name: Run Credit Reminders
+        env:
+          # Токен бота
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          
+          # Ключі Firebase для reminder.py
+          # (Переконайтеся, що ви додали їх у Secrets, як ми домовлялися раніше)
+          FIREBASE_PRIVATE_KEY_ID: ${{ secrets.FIREBASE_PRIVATE_KEY_ID }}
+          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_CLIENT_ID: ${{ secrets.FIREBASE_CLIENT_ID }}
+          FIREBASE_CLIENT_CERT_URL: ${{ secrets.FIREBASE_CLIENT_CERT_URL }}
+        run: python reminder.py
