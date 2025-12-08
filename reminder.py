@@ -8,82 +8,77 @@ import time
 
 # --- НАЛАШТУВАННЯ ---
 
-# Ініціалізація Firebase
 if not firebase_admin._apps:
-    # Отримуємо весь JSON-ключ як один рядок (надійно і без помилок формату)
     firebase_key_json = os.environ.get("FIREBASE_KEY")
-    
     if firebase_key_json:
         try:
-            # Перетворюємо рядок JSON у словник
             cred_dict = json.loads(firebase_key_json)
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
         except Exception as e:
-            print(f"❌ Помилка обробки FIREBASE_KEY: {e}")
+            print(f"❌ Помилка FIREBASE_KEY: {e}")
             exit(1)
     else:
-        print("❌ Помилка: Не знайдено змінну оточення FIREBASE_KEY")
+        print("❌ Помилка: Немає змінної FIREBASE_KEY")
         exit(1)
 
 db = firestore.client()
 TG_TOKEN = os.environ.get("TG_BOT_TOKEN")
 
 def send_telegram(chat_id, message):
-    """Відправка повідомлення"""
     if not TG_TOKEN:
-        print("❌ Помилка: Немає TG_BOT_TOKEN")
+        print("❌ Немає токена Telegram")
         return
-
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "HTML"
-    }
+    payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
     try:
         response = requests.post(url, json=payload)
-        if response.status_code != 200:
-            print(f"Failed to send to {chat_id}: {response.text}")
+        if response.status_code == 200:
+            print(f"✅ Повідомлення надіслано юзеру {chat_id}")
+        else:
+            print(f"⚠️ Telegram помилка {chat_id}: {response.text}")
         time.sleep(0.5) 
     except Exception as e:
-        print(f"Error sending to {chat_id}: {e}")
+        print(f"❌ Помилка з'єднання: {e}")
 
 def check_credits():
-    print("🚀 Початок перевірки кредитів...")
+    print("🚀 Початок перевірки...")
     today = datetime.now().date()
+    print(f"📅 Сьогоднішня дата: {today}")
     
-    # 1. Беремо всіх юзерів
-    try:
-        users_ref = db.collection('users')
-        all_users = users_ref.stream()
-    except Exception as e:
-        print(f"❌ Помилка доступу до БД: {e}")
-        return
+    # Отримуємо всіх юзерів
+    users_ref = db.collection('users')
+    all_users = list(users_ref.stream()) # Конвертуємо в список, щоб порахувати
+    
+    print(f"🔎 Знайдено користувачів у базі: {len(all_users)}")
+
+    if len(all_users) == 0:
+        print("⚠️ УВАГА: Список користувачів порожній! Можливо, документи users/ID є віртуальними.")
 
     for user_doc in all_users:
         user_id = user_doc.id
+        print(f"👤 Перевірка юзера: {user_id}")
         
-        # Працюємо тільки з тими, хто має 'tg_' у назві
         if not user_id.startswith('tg_'):
+            print(f"   -> Пропускаємо (не починається на tg_)")
             continue
 
         chat_id = user_id.replace('tg_', '')
         
-        # Логіка синхронізації
         user_data = user_doc.to_dict()
         target_db_id = user_id 
-        
         if 'linkedAccountId' in user_data and user_data['linkedAccountId']:
             target_db_id = user_data['linkedAccountId']
+            print(f"   -> Синхронізовано з: {target_db_id}")
 
-        # 2. Ліземо в папку credits цього юзера
         credits_ref = db.collection('users').document(target_db_id).collection('credits')
         credits = credits_ref.stream()
         
         alerts = []
+        credit_count = 0
 
         for cred in credits:
+            credit_count += 1
             data = cred.to_dict()
             bank = data.get('bank', 'Банк')
             amount = data.get('amount', 0)
@@ -96,9 +91,11 @@ def check_credits():
                 deadline = datetime.strptime(deadline_str, "%Y-%m-%d").date()
                 days_left = (deadline - today).days
                 
+                print(f"   💳 Кредит {bank}: дедлайн {deadline_str}, залишилось днів: {days_left}")
+
                 formatted_amount = "{:,.0f}".format(float(amount)).replace(',', ' ')
 
-                # --- УМОВИ НАГАДУВАННЯ ---
+                # Логіка
                 if days_left < 0:
                     alerts.append(f"🔴 <b>ПРОСТРОЧЕНО!</b>\n{bank}: {formatted_amount} грн (було {deadline_str})")
                 elif days_left == 0:
@@ -111,13 +108,17 @@ def check_credits():
                     alerts.append(f"📅 <b>{bank}</b>: {formatted_amount} грн — через 5 днів")
                 
             except ValueError:
+                print(f"   ❌ Помилка дати: {deadline_str}")
                 continue 
 
-        # 3. Відправляємо
+        if credit_count == 0:
+            print("   -> Кредитів не знайдено.")
+
         if alerts:
             full_text = "🔔 <b>Кредитні нагадування:</b>\n\n" + "\n\n".join(alerts)
             send_telegram(chat_id, full_text)
-            print(f"✅ Надіслано для {chat_id}")
+        else:
+            print("   -> Немає повідомлень для відправки (дні не співпали).")
 
 if __name__ == "__main__":
     check_credits()
