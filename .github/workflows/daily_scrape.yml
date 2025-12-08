@@ -4,7 +4,7 @@ on:
   schedule:
     # Запуск о 09:00 UTC (11:00 або 12:00 за Києвом)
     - cron: '0 9 * * *'
-  workflow_dispatch: # Цей рядок додає кнопку для ручного запуску
+  workflow_dispatch: # Кнопка для ручного запуску
 
 jobs:
   scrape_and_update:
@@ -17,11 +17,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11' # Оновили версію Python для стабільності
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Про всяк випадок встановлюємо вручну, якщо у файлі немає
+          pip install firebase-admin requests 
 
       # КРОК 1: Основний скрипт (Парсинг)
       - name: Run Scraper
@@ -31,13 +33,8 @@ jobs:
 
       # КРОК 2: Нагадування в Telegram
       - name: Run Credit Reminders
-        if: always() # Запускати навіть якщо парсер впаде з помилкою
+        if: always() # Запускати навіть якщо парсер впаде
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          # Ключі для reminder.py (мають бути додані в Secrets)
-          FIREBASE_PRIVATE_KEY_ID: ${{ secrets.FIREBASE_PRIVATE_KEY_ID }}
-          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
-          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
-          FIREBASE_CLIENT_ID: ${{ secrets.FIREBASE_CLIENT_ID }}
-          FIREBASE_CLIENT_CERT_URL: ${{ secrets.FIREBASE_CLIENT_CERT_URL }}
+          FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }} # Використовуємо той самий робочий ключ
         run: python reminder.py
