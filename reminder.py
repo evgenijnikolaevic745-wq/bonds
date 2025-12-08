@@ -1,4 +1,5 @@
 import os
+import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
@@ -7,28 +8,33 @@ import time
 
 # --- НАЛАШТУВАННЯ ---
 
-# Ініціалізація Firebase (використовуємо ті ж змінні, що і main.py)
+# Ініціалізація Firebase
 if not firebase_admin._apps:
-    cred_dict = {
-        "type": "service_account",
-        "project_id": "bonds-2fe74",
-        "private_key_id": os.environ.get("FIREBASE_PRIVATE_KEY_ID"),
-        "private_key": os.environ.get("FIREBASE_PRIVATE_KEY").replace('\\n', '\n'),
-        "client_email": os.environ.get("FIREBASE_CLIENT_EMAIL"),
-        "client_id": os.environ.get("FIREBASE_CLIENT_ID"),
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": os.environ.get("FIREBASE_CLIENT_CERT_URL")
-    }
-    cred = credentials.Certificate(cred_dict)
-    firebase_admin.initialize_app(cred)
+    # Отримуємо весь JSON-ключ як один рядок (надійно і без помилок формату)
+    firebase_key_json = os.environ.get("FIREBASE_KEY")
+    
+    if firebase_key_json:
+        try:
+            # Перетворюємо рядок JSON у словник
+            cred_dict = json.loads(firebase_key_json)
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+        except Exception as e:
+            print(f"❌ Помилка обробки FIREBASE_KEY: {e}")
+            exit(1)
+    else:
+        print("❌ Помилка: Не знайдено змінну оточення FIREBASE_KEY")
+        exit(1)
 
 db = firestore.client()
 TG_TOKEN = os.environ.get("TG_BOT_TOKEN")
 
 def send_telegram(chat_id, message):
     """Відправка повідомлення"""
+    if not TG_TOKEN:
+        print("❌ Помилка: Немає TG_BOT_TOKEN")
+        return
+
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -37,7 +43,6 @@ def send_telegram(chat_id, message):
     }
     try:
         response = requests.post(url, json=payload)
-        # Якщо бот заблокований юзером, API поверне 403, обробляємо щоб не впав скрипт
         if response.status_code != 200:
             print(f"Failed to send to {chat_id}: {response.text}")
         time.sleep(0.5) 
@@ -49,20 +54,23 @@ def check_credits():
     today = datetime.now().date()
     
     # 1. Беремо всіх юзерів
-    users_ref = db.collection('users')
-    all_users = users_ref.stream()
+    try:
+        users_ref = db.collection('users')
+        all_users = users_ref.stream()
+    except Exception as e:
+        print(f"❌ Помилка доступу до БД: {e}")
+        return
 
     for user_doc in all_users:
         user_id = user_doc.id
         
-        # Працюємо тільки з тими, хто має 'tg_' у назві (або прив'язаний до них)
+        # Працюємо тільки з тими, хто має 'tg_' у назві
         if not user_id.startswith('tg_'):
             continue
 
-        # Отримуємо чистий Chat ID (видаляємо 'tg_')
         chat_id = user_id.replace('tg_', '')
         
-        # Логіка синхронізації (якщо дані лежать в іншому акаунті)
+        # Логіка синхронізації
         user_data = user_doc.to_dict()
         target_db_id = user_id 
         
@@ -85,11 +93,9 @@ def check_credits():
                 continue
 
             try:
-                # Конвертуємо рядок "2025-12-08" у дату
                 deadline = datetime.strptime(deadline_str, "%Y-%m-%d").date()
                 days_left = (deadline - today).days
                 
-                # Форматування суми (10000 -> 10 000)
                 formatted_amount = "{:,.0f}".format(float(amount)).replace(',', ' ')
 
                 # --- УМОВИ НАГАДУВАННЯ ---
@@ -107,7 +113,7 @@ def check_credits():
             except ValueError:
                 continue 
 
-        # 3. Відправляємо, якщо є про що
+        # 3. Відправляємо
         if alerts:
             full_text = "🔔 <b>Кредитні нагадування:</b>\n\n" + "\n\n".join(alerts)
             send_telegram(chat_id, full_text)
