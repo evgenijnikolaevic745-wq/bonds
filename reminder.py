@@ -66,10 +66,59 @@ def check_credits():
         chat_id = user_id.replace('tg_', '')
         
         user_data = user_doc.to_dict()
-        target_db_id = user_id 
+        
+        # --- ВИПРАВЛЕННЯ: ПЕРЕВІРЯЄМО САМЕ ТЕЛЕГРАМ АКАУНТ ---
+        # Ми примусово кажемо скрипту: "Дивись у tg_ID, навіть якщо є лінк"
+        # target_db_id = user_id 
+        
+        # АБО (найкращий варіант): Перевіримо ОБИДВА місця
+        paths_to_check = [user_id]
         if 'linkedAccountId' in user_data and user_data['linkedAccountId']:
-            target_db_id = user_data['linkedAccountId']
-            print(f"   -> Синхронізовано з: {target_db_id}")
+             paths_to_check.append(user_data['linkedAccountId'])
+             print(f"   -> Знайдено зв'язок з: {user_data['linkedAccountId']}")
+
+        all_alerts = []
+
+        for target_db_id in paths_to_check:
+            print(f"   📂 Перевіряю папку: {target_db_id}")
+            credits_ref = db.collection('users').document(target_db_id).collection('credits')
+            credits = credits_ref.stream()
+
+            for cred in credits:
+                data = cred.to_dict()
+                bank = data.get('bank', 'Банк')
+                amount = data.get('amount', 0)
+                deadline_str = data.get('deadline')
+
+                if not deadline_str: continue
+
+                try:
+                    deadline = datetime.strptime(deadline_str, "%Y-%m-%d").date()
+                    days_left = (deadline - today).days
+                    
+                    print(f"      💳 {bank}: дедлайн {deadline_str} (через {days_left} дн)")
+                    formatted_amount = "{:,.0f}".format(float(amount)).replace(',', ' ')
+
+                    msg = None
+                    if days_left < 0: msg = f"🔴 <b>ПРОСТРОЧЕНО!</b>\n{bank}: {formatted_amount} грн (було {deadline_str})"
+                    elif days_left == 0: msg = f"🚨 <b>СЬОГОДНІ!</b>\n{bank}: {formatted_amount} грн — треба гасити!"
+                    elif days_left == 1: msg = f"⚠️ <b>{bank}</b>: {formatted_amount} грн — завтра дедлайн!"
+                    elif days_left == 3: msg = f"⏳ <b>{bank}</b>: {formatted_amount} грн — залишилось 3 дні"
+                    elif days_left == 5: msg = f"📅 <b>{bank}</b>: {formatted_amount} грн — через 5 днів"
+                    
+                    if msg: all_alerts.append(msg)
+                except ValueError: continue 
+
+        if all_alerts:
+            # Прибираємо дублікати повідомлень (set)
+            unique_alerts = list(set(all_alerts))
+            full_text = "🔔 <b>Кредитні нагадування:</b>\n\n" + "\n\n".join(unique_alerts)
+            send_telegram(chat_id, full_text)
+        else:
+            print("   -> Немає нагадувань.")
+            
+        # Цей continue треба, щоб не йти далі по старому коду циклу
+        continue
 
         credits_ref = db.collection('users').document(target_db_id).collection('credits')
         credits = credits_ref.stream()
