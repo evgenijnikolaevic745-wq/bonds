@@ -23,27 +23,25 @@ if not firebase_admin._apps:
 db = firestore.client()
 TG_TOKEN = os.environ.get("TG_BOT_TOKEN")
 
-# Ваше посилання
-WEB_APP_URL = "https://incomparable-lolly-891d01.netlify.app/"
+# ПОСИЛАННЯ НА ДОДАТОК
+WEB_APP_URL = "https://globalitevolutions.com.ua/index.html" 
 
 def send_update_message(chat_id):
-    if not TG_TOKEN:
-        print("❌ Немає токена Telegram")
-        return
-
+    if not TG_TOKEN: return
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     
-    # Текст повідомлення
+    # ВАШ НОВИЙ ТЕКСТ
     message_text = (
-        "<b>🚀 Оновлення InvestPro!</b>\n\n"
-        "Ми додали можливість вводити <b>будь-який банк</b> вручну!\n\n"
-        "✅ Більше ніяких обмежень списком.\n"
-        "✅ Працює для кредитів, купівлі та продажу облігацій.\n"
-        "✅ Якщо банку немає в списку — просто введіть назву.\n\n"
-        "Натисніть кнопку нижче, щоб спробувати 👇"
+        "<b>💎 Нова функція у додатку InvestPro: облік комісій!</b>\n\n"
+        "Купуєте облігації з комісією банку? Тепер InvestPro вміє це рахувати!\n\n"
+        "<b>Як це працює:</b>\n"
+        "При додаванні облігації вкажіть суму комісії — і додаток автоматично відніме її від вашого прибутку.\n\n"
+        "✅ Бачите реальну дохідність.\n"
+        "✅ Жодних прихованих витрат.\n"
+        "✅ Ще точніша аналітика портфелю.\n\n"
+        "Натисніть кнопку, щоб спробувати 👇"
     )
 
-    # Параметри з кнопкою
     payload = {
         "chat_id": chat_id,
         "text": message_text,
@@ -51,7 +49,7 @@ def send_update_message(chat_id):
         "reply_markup": {
             "inline_keyboard": [[
                 {
-                    "text": "📱 Відкрити оновлений InvestPro",
+                    "text": "📊 Спробувати нову функцію",
                     "web_app": {"url": WEB_APP_URL}
                 }
             ]]
@@ -62,37 +60,64 @@ def send_update_message(chat_id):
         response = requests.post(url, json=payload)
         if response.status_code == 200:
             print(f"✅ Надіслано: {chat_id}")
+            return True
+        elif response.status_code == 403:
+            print(f"🔕 Бот заблокований користувачем: {chat_id}")
         else:
             print(f"⚠️ Помилка {chat_id}: {response.text}")
-        time.sleep(0.05) # Пауза, щоб не спамити API
     except Exception as e:
         print(f"❌ Помилка з'єднання: {e}")
-
-def run_broadcast():
-    print("📢 Починаємо розсилку оновлення...")
     
-    # 1. Отримуємо прямих користувачів (документи tg_ID)
-    users_ref = db.collection('users').stream()
+    time.sleep(0.04) # Ліміт Телеграм (до 30 повідомлень в секунду)
+    return False
+
+def run_global_broadcast():
+    print("📢 Починаємо ГЛОБАЛЬНУ розсилку всім користувачам...")
     
-    # Використовуємо set, щоб уникнути дублікатів
-    target_users = set()
+    all_users = set()
 
-    for user in users_ref:
-        user_id = user.id
-        if user_id.startswith('tg_'):
-            clean_id = user_id.replace('tg_', '')
-            target_users.add(clean_id)
+    # 1. Збираємо з папки users (офіційні)
+    try:
+        users_ref = db.collection('users').stream()
+        for user in users_ref:
+            if user.id.startswith('tg_'):
+                all_users.add(user.id.replace('tg_', ''))
+    except Exception as e:
+        print(f"Помилка при скануванні users: {e}")
 
-    # 2. Відправляємо повідомлення
-    count = 0
-    total = len(target_users)
-    print(f"Знайдено {total} користувачів.")
+    # 2. Збираємо через Кредити (приховані)
+    try:
+        credits_ref = db.collection_group('credits').stream()
+        for cred in credits_ref:
+            owner = cred.reference.parent.parent
+            if owner and owner.id.startswith('tg_'):
+                all_users.add(owner.id.replace('tg_', ''))
+    except Exception as e:
+        print(f"Помилка при скануванні credits: {e}")
 
-    for chat_id in target_users:
-        send_update_message(chat_id)
-        count += 1
+    # 3. Збираємо через Облігації (приховані)
+    try:
+        bonds_ref = db.collection_group('bonds').stream()
+        for bond in bonds_ref:
+            owner = bond.reference.parent.parent
+            if owner and owner.id.startswith('tg_'):
+                all_users.add(owner.id.replace('tg_', ''))
+    except Exception as e:
+        print(f"Помилка при скануванні bonds: {e}")
+
+    total = len(all_users)
+    print(f"🎯 Всього знайдено унікальних користувачів: {total}")
+    print("-" * 30)
+
+    # ВІДПРАВКА
+    sent_count = 0
+    for chat_id in all_users:
+        success = send_update_message(chat_id)
+        if success:
+            sent_count += 1
             
-    print(f"🏁 Розсилку завершено! Відправлено: {count} з {total}")
+    print("-" * 30)
+    print(f"🏁 Розсилку завершено! Успішно доставлено: {sent_count} з {total}")
 
 if __name__ == "__main__":
-    run_broadcast()
+    run_global_broadcast()
