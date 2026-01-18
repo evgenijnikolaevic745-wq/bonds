@@ -23,33 +23,42 @@ if not firebase_admin._apps:
 db = firestore.client()
 TG_TOKEN = os.environ.get("TG_BOT_TOKEN")
 
-# ПОСИЛАННЯ НА ДОДАТОК
-WEB_APP_URL = "https://globalitevolutions.com.ua/index.html" 
+# ✅ 1. ВАШЕ ПОСИЛАННЯ НА ДОДАТОК
+WEB_APP_URL = "https://incomparable-lolly-891d01.netlify.app/"
+
+# ✅ 2. ВАШЕ НОВЕ ПРЯМЕ ПОСИЛАННЯ НА ЗОБРАЖЕННЯ
+IMAGE_URL = "https://i.ibb.co/27tvHxn2/IMG-1846.jpg"
 
 def send_update_message(chat_id):
     if not TG_TOKEN: return
-    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     
-    # ВАШ НОВИЙ ТЕКСТ
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendPhoto"
+    
+    # Текст повідомлення (підпис до фото)
     message_text = (
-        "<b>💎 Нова функція у додатку InvestPro: облік комісій!</b>\n\n"
-        "Купуєте облігації з комісією банку? Тепер InvestPro вміє це рахувати!\n\n"
-        "<b>Як це працює:</b>\n"
-        "При додаванні облігації вкажіть суму комісії — і додаток автоматично відніме її від вашого прибутку.\n\n"
-        "✅ Бачите реальну дохідність.\n"
-        "✅ Жодних прихованих витрат.\n"
-        "✅ Ще точніша аналітика портфелю.\n\n"
+        "<b>🔥 Оновлення InvestPro: додавайте записи одним реченням!</b>\n\n"
+        "Забудьте про ручне заповнення полів та калькулятор. Ми додали функцію \"розумний ввід\", яка виконує роботу за вас.\n\n"
+        "<b>Як це працює?</b>\n"
+        "Ви просто пишете в полі: <code>сьогодні 30 шт на 32079 грн</code>\n\n"
+        "Додаток миттєво обробить текст і сам:\n"
+        "🔹 Виставить дату сьогоднішнім днем.\n"
+        "🔹 Впише кількість: 30 шт.\n"
+        "🔹 Порахує ціну за одну облігацію (32079 ÷ 30 = 1069.3 грн) і підставить її у відповідне поле.\n\n"
+        "<b>Що ще він вміє?</b>\n"
+        "• Розпізнає банки для кредитів: напишіть <code>sense 20000 до 18.02</code> — і система автоматично обере банк, впише суму та розрахує дедлайн.\n"
+        "• Розуміє слова: \"вчора\", \"завтра\", \"28 січня\".\n\n"
         "Натисніть кнопку, щоб спробувати 👇"
     )
 
     payload = {
         "chat_id": chat_id,
-        "text": message_text,
+        "photo": IMAGE_URL,       # Ваше нове посилання
+        "caption": message_text,
         "parse_mode": "HTML",
         "reply_markup": {
             "inline_keyboard": [[
                 {
-                    "text": "📊 Спробувати нову функцію",
+                    "text": "✨ Спробувати нову функцію",
                     "web_app": {"url": WEB_APP_URL}
                 }
             ]]
@@ -58,6 +67,7 @@ def send_update_message(chat_id):
 
     try:
         response = requests.post(url, json=payload)
+        
         if response.status_code == 200:
             print(f"✅ Надіслано: {chat_id}")
             return True
@@ -68,15 +78,15 @@ def send_update_message(chat_id):
     except Exception as e:
         print(f"❌ Помилка з'єднання: {e}")
     
-    time.sleep(0.04) # Ліміт Телеграм (до 30 повідомлень в секунду)
+    time.sleep(0.04) # Ліміт
     return False
 
 def run_global_broadcast():
-    print("📢 Починаємо ГЛОБАЛЬНУ розсилку всім користувачам...")
+    print("📢 Починаємо ГЛОБАЛЬНУ розсилку (з ФОТО)...")
     
     all_users = set()
 
-    # 1. Збираємо з папки users (офіційні)
+    # 1. Збираємо з users
     try:
         users_ref = db.collection('users').stream()
         for user in users_ref:
@@ -85,7 +95,7 @@ def run_global_broadcast():
     except Exception as e:
         print(f"Помилка при скануванні users: {e}")
 
-    # 2. Збираємо через Кредити (приховані)
+    # 2. Збираємо з credits
     try:
         credits_ref = db.collection_group('credits').stream()
         for cred in credits_ref:
@@ -95,7 +105,7 @@ def run_global_broadcast():
     except Exception as e:
         print(f"Помилка при скануванні credits: {e}")
 
-    # 3. Збираємо через Облігації (приховані)
+    # 3. Збираємо з bonds
     try:
         bonds_ref = db.collection_group('bonds').stream()
         for bond in bonds_ref:
@@ -109,7 +119,6 @@ def run_global_broadcast():
     print(f"🎯 Всього знайдено унікальних користувачів: {total}")
     print("-" * 30)
 
-    # ВІДПРАВКА
     sent_count = 0
     for chat_id in all_users:
         success = send_update_message(chat_id)
